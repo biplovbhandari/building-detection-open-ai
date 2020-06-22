@@ -38,7 +38,7 @@ while True:
 
 # specify some data structure
 FEATURES = ast.literal_eval(os.getenv('FEATURES'))
-LABELS = ast.literal_eval(os.getenv('LABELS'))
+LABEL = os.getenv('LABEL')
 
 # patch size for training
 PATCH_SHAPE = ast.literal_eval(os.getenv('PATCH_SHAPE'))
@@ -57,10 +57,8 @@ BUFFER_SIZE = int(os.getenv('BUFFER_SIZE'))
 LEARNING_RATE = float(os.getenv('LEARNING_RATE'))
 DROPOUT_RATE = float(os.getenv('DROPOUT_RATE'))
 
-# other params w/ notes
-ACTIVATION_FN = os.getenv('ACTIVATION_FN')
+# other params
 CALLBACK_PARAMETER = os.getenv('CALLBACK_PARAMETER')
-COMBINATION = os.getenv('COMBINATION')
 
 training_files = glob.glob(str(TRAINING_DIR) + '/*')
 testing_files = glob.glob(str(TRAINING_DIR) + '/*')
@@ -68,23 +66,23 @@ validation_files = glob.glob(str(TRAINING_DIR) + '/*')
 
 # get training, testing, and eval TFRecordDataset
 # training is batched, shuffled, transformed, and repeated
-training = dataio.get_dataset(training_files, FEATURES, LABELS, PATCH_SHAPE, BATCH_SIZE,
+training = dataio.get_dataset(training_files, FEATURES, LABEL, PATCH_SHAPE, BATCH_SIZE,
                               buffer_size=BUFFER_SIZE, training=True).repeat()
 # testing is batched by 1 and repeated
-testing = dataio.get_dataset(testing_files, FEATURES, LABELS, PATCH_SHAPE, 1).repeat()
+testing = dataio.get_dataset(testing_files, FEATURES, LABEL, PATCH_SHAPE, 1).repeat()
 # eval is batched by 1
-validation = dataio.get_dataset(validation_files, FEATURES, LABELS, PATCH_SHAPE, 1)
+validation = dataio.get_dataset(validation_files, FEATURES, LABEL, PATCH_SHAPE, 1)
 
 # get distributed strategy and apply distribute i/o and model build
 strategy = tf.distribute.MirroredStrategy()
 
 # define tensor input shape and number of classes
-in_shape = (None, None) + (len(FEATURES),)
+in_shape = [None, None, len(FEATURES)]
 out_classes = int(os.getenv('OUT_CLASSES_NUM'))
 
 # build the model and compile
 my_model = model.build(in_shape, out_classes, distributed_strategy=strategy, dropout_rate=DROPOUT_RATE,
-                       learning_rate=LEARNING_RATE, combo=COMBINATION, out_activation=ACTIVATION_FN)
+                       learning_rate=LEARNING_RATE)
 
 # define callbacks during training
 model_checkpoint = callbacks.ModelCheckpoint(
@@ -121,21 +119,18 @@ with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
     f.write(f'BUFFER_SIZE: {BUFFER_SIZE}\n')
     f.write(f'LEARNING_RATE: {LEARNING_RATE}\n')
     f.write(f'DROPOUT_RATE: {DROPOUT_RATE}\n')
-    f.write(f'ACTIVATION_FN: {ACTIVATION_FN}\n')
     f.write(f'FEATURES: {FEATURES}\n')
-    f.write(f'LABELS: {LABELS}\n')
+    f.write(f'LABEL: {LABEL}\n')
     f.write(f'PATCH_SHAPE: {PATCH_SHAPE}\n')
     f.write(f'CALLBACK_PARAMETER: {CALLBACK_PARAMETER}\n')
     f.write(f'MODEL_NAME: {MODEL_NAME}.h5\n')
     f.write(f'MODEL_CHECKPOINT_NAME: {MODEL_CHECKPOINT_NAME}.h5\n')
-    f.write(f'COMBINATION: {COMBINATION}\n')
 
 # save the model
 my_model.save(f'{str(MODEL_SAVE_DIR)}/{MODEL_NAME}.h5')
 
 # open and save model
-this_model = model.get_model(in_shape, out_classes, dropout_rate=DROPOUT_RATE,
-                             learning_rate=LEARNING_RATE, combo=COMBINATION, out_activation=ACTIVATION_FN)
+this_model = model.get_model(in_shape, out_classes, dropout_rate=DROPOUT_RATE)
 this_model.load_weights(f'{str(MODEL_SAVE_DIR)}/{MODEL_CHECKPOINT_NAME}.h5')
 
 print(this_model.summary())
