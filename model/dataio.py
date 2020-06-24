@@ -5,13 +5,8 @@ import tensorflow as tf
 
 
 @tf.function
-def parse_tfrecord(example_proto, features=None, label=None, patch_shape=None):
-    keys = features + [label]
-    columns = [
-        tf.io.FixedLenFeature(shape=patch_shape, dtype=tf.float32) for k in keys
-    ]
-    proto_struct = dict(zip(keys, columns))
-    inputs = tf.io.parse_single_example(example_proto, proto_struct)
+def parse_tfrecord(example_proto, keys=None, keys_dict=None):
+    inputs = tf.io.parse_single_example(example_proto, keys_dict)
     inputs_list = [inputs.get(key) for key in keys]
     stacked = tf.stack(inputs_list, axis=0)
     # Convert from CHW to HWC
@@ -21,8 +16,8 @@ def parse_tfrecord(example_proto, features=None, label=None, patch_shape=None):
 
 @tf.function
 def to_tuple(dataset, n_features=None):
-    features = dataset[:, :, :, n_features]
-    labels = dataset[:, :, :, n_features:]
+    features = dataset[:, :, :n_features]
+    labels = dataset[:, :, n_features:]
     return features, labels
 
 
@@ -49,13 +44,13 @@ def random_transform(dataset):
     return dataset
 
 
-def get_dataset(files, features, label, patch_shape, batch_size,
-                buffer_size=1000, training=False, **kwargs):
-    parser = partial(parse_tfrecord,
-                     features=features,
-                     label=label,
-                     patch_shape=patch_shape
-                     )
+def get_dataset(files, features, label, patch_shape, training=False, **kwargs):
+
+    keys = features + [label]
+    columns = [tf.io.FixedLenFeature(shape=patch_shape, dtype=tf.float32) for k in keys]
+    keys_dict = dict(zip(keys, columns))
+
+    parser = partial(parse_tfrecord, keys_dict=keys_dict, keys=keys)
 
     split_data = partial(to_tuple, n_features=len(features))
 
@@ -64,10 +59,11 @@ def get_dataset(files, features, label, patch_shape, batch_size,
 
     # repeat is performed on the calling function
     if training:
-        dataset = dataset.shuffle(buffer_size, reshuffle_each_iteration=True).batch(batch_size) \
+        dataset = dataset \
             .map(random_transform, num_parallel_calls=tf.data.experimental.AUTOTUNE) \
             .map(split_data, num_parallel_calls=tf.data.experimental.AUTOTUNE)
     else:
-        dataset = dataset.batch(batch_size).map(split_data, num_parallel_calls=tf.data.experimental.AUTOTUNE)
+        dataset = dataset \
+            .map(split_data, num_parallel_calls=tf.data.experimental.AUTOTUNE)
 
     return dataset

@@ -52,7 +52,6 @@ def decoder_block(input_tensor, concat_tensor, num_filters, dropout_rate, name):
 
 def get_model(in_shape, out_classes, dropout_rate=0.2, **kwargs):
     inputs = layers.Input(shape=in_shape, name='input')
-    inputs = add_features(inputs)
 
     encoder0_pool, encoder0 = encoder_block(inputs, 16, dropout_rate, 'encoder_block_1')
     encoder1_pool, encoder1 = encoder_block(encoder0_pool, 32, dropout_rate, 'encoder_block_2')
@@ -71,23 +70,6 @@ def get_model(in_shape, out_classes, dropout_rate=0.2, **kwargs):
     model = models.Model(inputs=[inputs], outputs=[outputs], name='unet')
 
     return model
-
-
-def add_features(input_tensor):
-    def get_luminance(r, g, b, name='luminance'):
-        return layers.Lambda(lambda x: (x[0] * 0.2126) + (x[1] * 0.7152) + (x[2] * 0.0722), name=name)([r, g, b])
-
-    def calculate_psi(c1, c2, name='psi'):
-        # color invarient for red roof building
-        return layers.Lambda(lambda x: 4 / math.pi * tf.math.atan((x[0] - x[1]) / (x[0] + x[1])), name=name)([c1, c2])
-
-    luminance = get_luminance(input_tensor[:, :, :, 0:1], input_tensor[:, :, :, 1:2], input_tensor[:, :, :, 2:3])  # r, g, b
-    # color invarient for red roof building
-    psi_r = calculate_psi(input_tensor[:, :, :, 0:1], input_tensor[:, :, :, 1:2], name='psi_r')  # r, g
-    # color invarient to enhance shadow region
-    psi_b = calculate_psi(input_tensor[:, :, :, 2:3], input_tensor[:, :, :, 1:2], name='psi_b')  # b, g
-
-    return layers.concatenate([input_tensor, luminance, psi_r, psi_b], name='input_features')
 
 
 def recall_m(y_true, y_pred):
@@ -144,11 +126,10 @@ def build(*args, optimizer=None, loss=None, metrics=None, distributed_strategy=N
 
     if metrics is None:
         metrics = [
-            keras.metrics.categorical_accuracy,
             keras.metrics.Precision(),
             keras.metrics.Recall(),
             dice_coef,
-            f1_m
+            f1_m,
         ]
 
     if distributed_strategy is not None:

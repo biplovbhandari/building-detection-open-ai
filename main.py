@@ -59,6 +59,7 @@ DROPOUT_RATE = float(os.getenv('DROPOUT_RATE'))
 
 # other params
 CALLBACK_PARAMETER = os.getenv('CALLBACK_PARAMETER')
+LOSS = model.dice_loss
 
 training_files = glob.glob(str(TRAINING_DIR) + '/*')
 testing_files = glob.glob(str(TRAINING_DIR) + '/*')
@@ -66,23 +67,32 @@ validation_files = glob.glob(str(TRAINING_DIR) + '/*')
 
 # get training, testing, and eval TFRecordDataset
 # training is batched, shuffled, transformed, and repeated
-training = dataio.get_dataset(training_files, FEATURES, LABEL, PATCH_SHAPE, BATCH_SIZE,
-                              buffer_size=BUFFER_SIZE, training=True).repeat()
+training = dataio.get_dataset(training_files, FEATURES, LABEL, PATCH_SHAPE, training=True)
+training = training.shuffle(BUFFER_SIZE, reshuffle_each_iteration=True).batch(BUFFER_SIZE).repeat()
+# print('************************************************************************')
+# print(iter(training.take(1)).next())
 # testing is batched by 1 and repeated
-testing = dataio.get_dataset(testing_files, FEATURES, LABEL, PATCH_SHAPE, 1).repeat()
+testing = dataio.get_dataset(testing_files, FEATURES, LABEL, PATCH_SHAPE).repeat()
+testing = testing.batch(1).repeat()
+# print('************************************************************************')
+# print(iter(testing.take(1)).next())
 # eval is batched by 1
-validation = dataio.get_dataset(validation_files, FEATURES, LABEL, PATCH_SHAPE, 1)
-
+validation = dataio.get_dataset(validation_files, FEATURES, LABEL, PATCH_SHAPE)
+validation = validation.batch(1)
+# print('************************************************************************')
+# print(iter(validation.take(1)).next())
+# print('************************************************************************')
 # get distributed strategy and apply distribute i/o and model build
 strategy = tf.distribute.MirroredStrategy()
 
 # define tensor input shape and number of classes
+# in_shape = (None, None) + (len(FEATURES),)
 in_shape = [None, None, len(FEATURES)]
 out_classes = int(os.getenv('OUT_CLASSES_NUM'))
 
 # build the model and compile
 my_model = model.build(in_shape, out_classes, distributed_strategy=strategy, dropout_rate=DROPOUT_RATE,
-                       learning_rate=LEARNING_RATE)
+                       learning_rate=LEARNING_RATE, loss=LOSS)
 
 # define callbacks during training
 model_checkpoint = callbacks.ModelCheckpoint(
