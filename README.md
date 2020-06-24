@@ -1,1 +1,4 @@
-# VGG 19 encoder block with custom UNET decoder block
+# UNET Model
+
+##### Uses UNET for performing the probabilities output.
+##### Uses Earth Engine to perform object detection/classification.
