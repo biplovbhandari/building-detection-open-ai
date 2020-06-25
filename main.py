@@ -65,6 +65,25 @@ training_files = glob.glob(str(TRAINING_DIR) + '/*')
 testing_files = glob.glob(str(TRAINING_DIR) + '/*')
 validation_files = glob.glob(str(TRAINING_DIR) + '/*')
 
+
+# save the parameters
+with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
+    f.write(f'TRAIN_SIZE: {TRAIN_SIZE}\n')
+    f.write(f'TEST_SIZE: {TEST_SIZE}\n')
+    f.write(f'VAL_SIZE: {VAL_SIZE}\n')
+    f.write(f'BATCH_SIZE: {BATCH_SIZE}\n')
+    f.write(f'EPOCHS: {EPOCHS}\n')
+    f.write(f'BUFFER_SIZE: {BUFFER_SIZE}\n')
+    f.write(f'LEARNING_RATE: {LEARNING_RATE}\n')
+    f.write(f'DROPOUT_RATE: {DROPOUT_RATE}\n')
+    f.write(f'FEATURES: {FEATURES}\n')
+    f.write(f'LABEL: {LABEL}\n')
+    f.write(f'PATCH_SHAPE: {PATCH_SHAPE}\n')
+    f.write(f'CALLBACK_PARAMETER: {CALLBACK_PARAMETER}\n')
+    f.write(f'MODEL_NAME: {MODEL_NAME}.h5\n')
+    f.write(f'MODEL_CHECKPOINT_NAME: {MODEL_CHECKPOINT_NAME}.h5\n')
+
+
 # get training, testing, and eval TFRecordDataset
 # training is batched, shuffled, transformed, and repeated
 training = dataio.get_dataset(training_files, FEATURES, LABEL, PATCH_SHAPE, training=True)
@@ -118,23 +137,6 @@ history = my_model.fit(
 
 # check how the model trained
 my_model.evaluate(validation)
-
-# save the parameters
-with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
-    f.write(f'TRAIN_SIZE: {TRAIN_SIZE}\n')
-    f.write(f'TEST_SIZE: {TEST_SIZE}\n')
-    f.write(f'VAL_SIZE: {VAL_SIZE}\n')
-    f.write(f'BATCH_SIZE: {BATCH_SIZE}\n')
-    f.write(f'EPOCHS: {EPOCHS}\n')
-    f.write(f'BUFFER_SIZE: {BUFFER_SIZE}\n')
-    f.write(f'LEARNING_RATE: {LEARNING_RATE}\n')
-    f.write(f'DROPOUT_RATE: {DROPOUT_RATE}\n')
-    f.write(f'FEATURES: {FEATURES}\n')
-    f.write(f'LABEL: {LABEL}\n')
-    f.write(f'PATCH_SHAPE: {PATCH_SHAPE}\n')
-    f.write(f'CALLBACK_PARAMETER: {CALLBACK_PARAMETER}\n')
-    f.write(f'MODEL_NAME: {MODEL_NAME}.h5\n')
-    f.write(f'MODEL_CHECKPOINT_NAME: {MODEL_CHECKPOINT_NAME}.h5\n')
 
 # save the model
 my_model.save(f'{str(MODEL_SAVE_DIR)}/{MODEL_NAME}.h5')

@@ -51,19 +51,20 @@ def decoder_block(input_tensor, concat_tensor, num_filters, dropout_rate, name):
 
 
 def get_model(in_shape, out_classes, dropout_rate=0.2, **kwargs):
-    inputs = layers.Input(shape=in_shape, name='input')
+    inputs = layers.Input(shape=in_shape, name='input')  # 256
+    encoder0_pool, encoder0 = encoder_block(inputs, 32, dropout_rate, 'encoder_block_1')  # 128
+    encoder1_pool, encoder1 = encoder_block(encoder0_pool, 64, dropout_rate, 'encoder_block_2')  # 64
+    encoder2_pool, encoder2 = encoder_block(encoder1_pool, 128, dropout_rate, 'encoder_block_3')  # 32
+    encoder3_pool, encoder3 = encoder_block(encoder2_pool, 256, dropout_rate, 'encoder_block_4')  # 16
+    encoder4_pool, encoder4 = encoder_block(encoder3_pool, 512, dropout_rate, 'encoder_block_5')  # 8
 
-    encoder0_pool, encoder0 = encoder_block(inputs, 16, dropout_rate, 'encoder_block_1')
-    encoder1_pool, encoder1 = encoder_block(encoder0_pool, 32, dropout_rate, 'encoder_block_2')
-    encoder2_pool, encoder2 = encoder_block(encoder1_pool, 64, dropout_rate, 'encoder_block_3')
-    encoder3_pool, encoder3 = encoder_block(encoder2_pool, 128, dropout_rate, 'encoder_block_4')
+    center = conv_block(encoder4_pool, 1024, dropout_rate, 'center_block')  # center
 
-    center = conv_block(encoder3_pool, 256, dropout_rate, 'center_block')  # center
-
-    decoder3 = decoder_block(center, encoder3, 128, dropout_rate, 'decoder_block_1')
-    decoder2 = decoder_block(decoder3, encoder2, 64, dropout_rate, 'decoder_block_2')
-    decoder1 = decoder_block(decoder2, encoder1, 32, dropout_rate, 'decoder_block_3')
-    decoder0 = decoder_block(decoder1, encoder0, 16, dropout_rate, 'decoder_block_4')
+    decoder4 = decoder_block(center, encoder4, 512, dropout_rate, 'decoder_block_5')  # 16
+    decoder3 = decoder_block(decoder4, encoder3, 256, dropout_rate, 'decoder_block_4')  # 32
+    decoder2 = decoder_block(decoder3, encoder2, 128, dropout_rate, 'decoder_block_3')  # 64
+    decoder1 = decoder_block(decoder2, encoder1, 64, dropout_rate, 'decoder_block_2')  # 128
+    decoder0 = decoder_block(decoder1, encoder0, 32, dropout_rate, 'decoder_block_1')  # 256
 
     outputs = layers.Conv2D(out_classes, (1, 1), activation='sigmoid', name='final_out')(decoder0)
 
