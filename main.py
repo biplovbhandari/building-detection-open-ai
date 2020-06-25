@@ -38,7 +38,7 @@ while True:
 
 # specify some data structure
 FEATURES = ast.literal_eval(os.getenv('FEATURES'))
-LABEL = os.getenv('LABEL')
+LABELS = ast.literal_eval(os.getenv('LABELS'))
 
 # patch size for training
 PATCH_SHAPE = ast.literal_eval(os.getenv('PATCH_SHAPE'))
@@ -77,7 +77,7 @@ with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
     f.write(f'LEARNING_RATE: {LEARNING_RATE}\n')
     f.write(f'DROPOUT_RATE: {DROPOUT_RATE}\n')
     f.write(f'FEATURES: {FEATURES}\n')
-    f.write(f'LABEL: {LABEL}\n')
+    f.write(f'LABELS: {LABELS}\n')
     f.write(f'PATCH_SHAPE: {PATCH_SHAPE}\n')
     f.write(f'CALLBACK_PARAMETER: {CALLBACK_PARAMETER}\n')
     f.write(f'MODEL_NAME: {MODEL_NAME}.h5\n')
@@ -86,23 +86,14 @@ with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
 
 # get training, testing, and eval TFRecordDataset
 # training is batched, shuffled, transformed, and repeated
-training = dataio.get_dataset(training_files, FEATURES, LABEL, PATCH_SHAPE, training=True)
-training = training.shuffle(BUFFER_SIZE, reshuffle_each_iteration=True).batch(BUFFER_SIZE).repeat()
-# print('************************************************************************')
-# print(iter(training.take(1)).next())
+training = dataio.get_dataset(training_files, FEATURES, LABELS, PATCH_SHAPE, BATCH_SIZE,
+                              buffer_size=BUFFER_SIZE, training=True).repeat()
 # testing is batched by 1 and repeated
-testing = dataio.get_dataset(testing_files, FEATURES, LABEL, PATCH_SHAPE).repeat()
-testing = testing.batch(1).repeat()
-# print('************************************************************************')
-# print(iter(testing.take(1)).next())
+testing = dataio.get_dataset(testing_files, FEATURES, LABELS, PATCH_SHAPE, 1).repeat()
 # eval is batched by 1
-validation = dataio.get_dataset(validation_files, FEATURES, LABEL, PATCH_SHAPE)
-validation = validation.batch(1)
-# print('************************************************************************')
-# print(iter(validation.take(1)).next())
-# print('************************************************************************')
-# get distributed strategy and apply distribute i/o and model build
+validation = dataio.get_dataset(validation_files, FEATURES, LABELS, PATCH_SHAPE, 1)
 
+# get distributed strategy and apply distribute i/o and model build
 strategy = tf.distribute.MirroredStrategy()
 
 # define tensor input shape and number of classes
