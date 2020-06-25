@@ -1,76 +1,38 @@
 # -*- coding: utf-8 -*-
 
-import math
-import tensorflow as tf
+from functools import partial
 from tensorflow import keras
 from tensorflow.keras import models
 from tensorflow.keras import layers
 from tensorflow.keras import backend as K
 
-
-def conv_block(input_tensor, num_filters, dropout_rate, name):
-    encoder = layers.Conv2D(num_filters, (3, 3), padding='same', name=f'conv1_{name}')(input_tensor)
-    encoder = layers.BatchNormalization(name=f'batchnorm1_{name}')(encoder)
-    # encoder = layers.Activation('relu')(encoder)
-    encoder = layers.Activation(tf.nn.leaky_relu, name=f'activation1_{name}')(encoder)
-    encoder = layers.Conv2D(num_filters, (3, 3), padding='same', name=f'conv2_{name}')(encoder)
-    encoder = layers.BatchNormalization(name=f'batchnorm2_{name}')(encoder)
-    # encoder = layers.Activation('relu')(encoder)
-    encoder = layers.Activation(tf.nn.leaky_relu, name=f'activation2_{name}')(encoder)
-    encoder = layers.SpatialDropout2D(dropout_rate, name=f'spatial_dropout1_{name}')(encoder)
-    return encoder
+conv_layer = partial(layers.Conv2D,
+                     padding='same',
+                     kernel_initializer='he_normal',
+                     bias_initializer='he_normal',
+                     kernel_regularizer=keras.regularizers.l2(0.001),
+                     bias_regularizer=keras.regularizers.l2(0.001)
+                     )
 
 
-def encoder_block(input_tensor, num_filters, dropout_rate, name):
-    encoder = conv_block(input_tensor, num_filters, dropout_rate, name)
-    encoder_pool = layers.MaxPooling2D((2, 2), strides=(2, 2), name=f'max_pooling_{name}')(encoder)
-    return encoder_pool, encoder
+def decoder_block(input_tensor, concat_tensor=None, n_filters=512, n_convs=2, i=0, rate=0.2,
+                  name_prefix='decoder_block', noise=1, activation='relu', combo='add', **kwargs):
+    deconv = input_tensor
+    for j in range(n_convs):
+        deconv = conv_layer(n_filters, (3, 3), name=f'{name_prefix}{i}_deconv{j + 1}')(deconv)
+        deconv = layers.BatchNormalization(name=f'{name_prefix}{i}_batchnorm{j + 1}')(deconv)
+        deconv = layers.Activation(activation, name=f'{name_prefix}{i}_activation{j + 1}')(deconv)
+        deconv = layers.GaussianNoise(stddev=noise, name=f'{name_prefix}{i}_noise{j + 1}')(deconv)
 
+        if j == 0 and concat_tensor is not None:
+            deconv = layers.Dropout(rate=rate, name=f'{name_prefix}{i}_dropout')(deconv)
+            if combo == 'add':
+                deconv = layers.add([deconv, concat_tensor], name=f'{name_prefix}{i}_residual')
+            elif combo == 'concat':
+                deconv = layers.concatenate([deconv, concat_tensor], name=f'{name_prefix}{i}_concat')
 
-def decoder_block(input_tensor, concat_tensor, num_filters, dropout_rate, name):
-    decoder = layers.Conv2DTranspose(num_filters, (2, 2), strides=(2, 2), padding='same', name=f'deconv1_{name}')(
-        input_tensor)
-    decoder = layers.concatenate([concat_tensor, decoder], axis=-1, name=f'concat1_{name}')
-    decoder = layers.BatchNormalization(name=f'batchnorm1_{name}')(decoder)
-    # decoder = layers.Activation('relu')(decoder)
-    decoder = layers.Activation(tf.nn.leaky_relu, name=f'activation1_{name}')(decoder)
-
-    decoder = layers.Conv2D(num_filters, (3, 3), padding='same', name=f'deconv2_{name}')(decoder)
-    decoder = layers.BatchNormalization(name=f'batchnorm2_{name}')(decoder)
-    # decoder = layers.Activation('relu')(decoder)
-    decoder = layers.Activation(tf.nn.leaky_relu, name=f'activation2_{name}')(decoder)
-
-    decoder = layers.Conv2D(num_filters, (3, 3), padding='same', name=f'deconv3_{name}')(decoder)
-    decoder = layers.BatchNormalization(name=f'batchnorm3_{name}')(decoder)
-    # decoder = layers.Activation('relu')(decoder)
-    decoder = layers.Activation(tf.nn.leaky_relu, name=f'activation3_{name}')(decoder)
-
-    decoder = layers.SpatialDropout2D(dropout_rate, name=f'spatial_dropout1_{name}')(decoder)
-
-    return decoder
-
-
-def get_model(in_shape, out_classes, dropout_rate=0.2, **kwargs):
-    inputs = layers.Input(shape=in_shape, name='input')  # 256
-    encoder0_pool, encoder0 = encoder_block(inputs, 32, dropout_rate, 'encoder_block_1')  # 128
-    encoder1_pool, encoder1 = encoder_block(encoder0_pool, 64, dropout_rate, 'encoder_block_2')  # 64
-    encoder2_pool, encoder2 = encoder_block(encoder1_pool, 128, dropout_rate, 'encoder_block_3')  # 32
-    encoder3_pool, encoder3 = encoder_block(encoder2_pool, 256, dropout_rate, 'encoder_block_4')  # 16
-    encoder4_pool, encoder4 = encoder_block(encoder3_pool, 512, dropout_rate, 'encoder_block_5')  # 8
-
-    center = conv_block(encoder4_pool, 1024, dropout_rate, 'center_block')  # center
-
-    decoder4 = decoder_block(center, encoder4, 512, dropout_rate, 'decoder_block_5')  # 16
-    decoder3 = decoder_block(decoder4, encoder3, 256, dropout_rate, 'decoder_block_4')  # 32
-    decoder2 = decoder_block(decoder3, encoder2, 128, dropout_rate, 'decoder_block_3')  # 64
-    decoder1 = decoder_block(decoder2, encoder1, 64, dropout_rate, 'decoder_block_2')  # 128
-    decoder0 = decoder_block(decoder1, encoder0, 32, dropout_rate, 'decoder_block_1')  # 256
-
-    outputs = layers.Conv2D(out_classes, (1, 1), activation='sigmoid', name='final_out')(decoder0)
-
-    model = models.Model(inputs=[inputs], outputs=[outputs], name='unet')
-
-    return model
+    up = layers.UpSampling2D(interpolation='bilinear', name=f'{name_prefix}{i}_upsamp')(deconv)
+    return up
 
 
 def recall_m(y_true, y_pred):
@@ -113,6 +75,56 @@ def bce_dice_loss(y_true, y_pred):
 
 def bce_loss(y_true, y_pred):
     return keras.losses.binary_crossentropy(y_true, y_pred, label_smoothing=0.2)
+
+
+def get_model(in_shape, out_classes, dropout_rate=0.2, noise=1,
+              activation='relu', combo='add', **kwargs):
+    in_tensor = layers.Input(shape=in_shape, name='input')
+
+    vgg19 = keras.applications.VGG19(include_top=False, weights=None, input_tensor=in_tensor)
+
+    base_in = vgg19.input
+    base_out = vgg19.output
+    concat_layers = ['block5_conv4', 'block4_conv4', 'block3_conv4', 'block2_conv2', 'block1_conv2']
+    concat_tensors = [vgg19.get_layer(layer).output for layer in concat_layers]
+
+    decoder0 = decoder_block(
+        base_out, n_filters=1028, n_convs=3, noise=noise,
+        i=0, rate=dropout_rate, activation=activation, combo=combo, **kwargs
+    )  # 64
+    decoder1 = decoder_block(
+        decoder0, concat_tensor=concat_tensors[0], n_filters=512, n_convs=3, noise=noise,
+        i=1, rate=dropout_rate, activation=activation, combo=combo, **kwargs
+    )
+    decoder2 = decoder_block(
+        decoder1, concat_tensor=concat_tensors[1], n_filters=512, n_convs=3, noise=noise,
+        i=2, rate=dropout_rate, activation=activation, combo=combo, **kwargs
+    )
+    decoder3 = decoder_block(
+        decoder2, concat_tensor=concat_tensors[2], n_filters=256, n_convs=2, noise=noise,
+        i=3, rate=dropout_rate, activation=activation, combo=combo, **kwargs
+    )
+    decoder4 = decoder_block(
+        decoder3, concat_tensor=concat_tensors[3], n_filters=128, n_convs=2, noise=noise,
+        i=4, rate=dropout_rate, activation=activation, combo=combo, **kwargs
+    )
+
+    out_branch = conv_layer(64, (3, 3), name=f'out_block_conv1')(decoder4)
+    out_branch = layers.BatchNormalization(name=f'out_block_batchnorm1')(out_branch)
+    out_branch = layers.Activation(activation, name='out_block_activation1')(out_branch)
+    if combo == 'add':
+        out_branch = layers.add([out_branch, concat_tensors[4]], name='out_block_residual')
+    elif combo == 'concat':
+        out_branch = layers.concatenate([out_branch, concat_tensors[4]], name='out_block_concat')
+    out_branch = layers.SpatialDropout2D(rate=dropout_rate, seed=0, name='out_block_spatialdrop')(out_branch)
+    out_branch = conv_layer(64, (5, 5), name='out_block_conv2')(out_branch)
+    out_branch = layers.BatchNormalization(name='out_block_batchnorm2')(out_branch)
+    out_branch = layers.Activation(activation, name='out_block_activation2')(out_branch)
+
+    out_activation = kwargs.get('out_activation', 'softmax')
+    output = layers.Conv2D(out_classes, (1, 1), activation=out_activation, name='final_conv')(out_branch)
+    model = models.Model(inputs=[base_in], outputs=[output], name='vgg19-unet')
+    return model
 
 
 def build(*args, optimizer=None, loss=None, metrics=None, distributed_strategy=None, **kwargs):

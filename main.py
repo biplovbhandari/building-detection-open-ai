@@ -102,6 +102,7 @@ validation = validation.batch(1)
 # print(iter(validation.take(1)).next())
 # print('************************************************************************')
 # get distributed strategy and apply distribute i/o and model build
+
 strategy = tf.distribute.MirroredStrategy()
 
 # define tensor input shape and number of classes
@@ -112,6 +113,7 @@ out_classes = int(os.getenv('OUT_CLASSES_NUM'))
 # build the model and compile
 my_model = model.build(in_shape, out_classes, distributed_strategy=strategy, dropout_rate=DROPOUT_RATE,
                        learning_rate=LEARNING_RATE, loss=LOSS)
+print(my_model.summary())
 
 # define callbacks during training
 model_checkpoint = callbacks.ModelCheckpoint(
@@ -144,6 +146,4 @@ my_model.save(f'{str(MODEL_SAVE_DIR)}/{MODEL_NAME}.h5')
 # open and save model
 this_model = model.get_model(in_shape, out_classes, dropout_rate=DROPOUT_RATE)
 this_model.load_weights(f'{str(MODEL_SAVE_DIR)}/{MODEL_CHECKPOINT_NAME}.h5')
-
-print(this_model.summary())
 tf.keras.models.save_model(this_model, str(MODEL_SAVE_DIR), save_format='tf')
