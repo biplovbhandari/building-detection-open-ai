@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from dotenv import load_dotenv
+
 load_dotenv('.env')
 
 import ast
@@ -12,7 +13,6 @@ from pathlib import Path
 from tensorflow.keras import callbacks
 
 from model import dataio, model
-
 
 # specify directory as data io info
 BASEDIR = Path(os.getenv('BASEDIR'))
@@ -36,6 +36,8 @@ while True:
         continue
     break
 
+print('***************************************************************************')
+
 # specify some data structure
 FEATURES = ast.literal_eval(os.getenv('FEATURES'))
 LABELS = ast.literal_eval(os.getenv('LABELS'))
@@ -54,7 +56,21 @@ EPOCHS = int(os.getenv('EPOCHS'))
 BUFFER_SIZE = int(os.getenv('BUFFER_SIZE'))
 
 # Rates
+USE_ADJUSTED_LR = bool(os.getenv('USE_ADJUSTED_LR'))
 LEARNING_RATE = float(os.getenv('LEARNING_RATE'))
+MAX_LR = float(os.getenv('MAX_LR'))
+MID_LR = float(os.getenv('MID_LR'))
+MIN_LR = float(os.getenv('MIN_LR'))
+RAMPUP_EPOCHS = int(os.getenv('RAMPUP_EPOCHS'))
+SUSTAIN_EPOCHS = int(os.getenv('SUSTAIN_EPOCHS'))
+
+print(f'USE_ADJUSTED_LR: {USE_ADJUSTED_LR}')
+print(f'MAX_LR: {MAX_LR}')
+print(f'MID_LR: {MID_LR}')
+print(f'MIN_LR: {MIN_LR}')
+print(f'RAMPUP_EPOCHS: {RAMPUP_EPOCHS}')
+print(f'SUSTAIN_EPOCHS: {SUSTAIN_EPOCHS}')
+
 DROPOUT_RATE = float(os.getenv('DROPOUT_RATE'))
 
 # other params
@@ -65,7 +81,6 @@ training_files = glob.glob(str(TRAINING_DIR) + '/*')
 testing_files = glob.glob(str(TRAINING_DIR) + '/*')
 validation_files = glob.glob(str(TRAINING_DIR) + '/*')
 
-
 # save the parameters
 with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
     f.write(f'TRAIN_SIZE: {TRAIN_SIZE}\n')
@@ -75,6 +90,13 @@ with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
     f.write(f'EPOCHS: {EPOCHS}\n')
     f.write(f'BUFFER_SIZE: {BUFFER_SIZE}\n')
     f.write(f'LEARNING_RATE: {LEARNING_RATE}\n')
+    if USE_ADJUSTED_LR:
+        f.write(f'USE_ADJUSTED_LR: {USE_ADJUSTED_LR}\n')
+        f.write(f'MAX_LR: {MAX_LR}\n')
+        f.write(f'MID_LR: {MID_LR}\n')
+        f.write(f'MIN_LR: {MIN_LR}\n')
+        f.write(f'RAMPUP_EPOCHS: {RAMPUP_EPOCHS}\n')
+        f.write(f'SUSTAIN_EPOCHS: {SUSTAIN_EPOCHS}\n')
     f.write(f'DROPOUT_RATE: {DROPOUT_RATE}\n')
     f.write(f'FEATURES: {FEATURES}\n')
     f.write(f'LABELS: {LABELS}\n')
@@ -82,7 +104,6 @@ with open(f'{str(MODEL_SAVE_DIR)}/parameters.txt', 'w') as f:
     f.write(f'CALLBACK_PARAMETER: {CALLBACK_PARAMETER}\n')
     f.write(f'MODEL_NAME: {MODEL_NAME}.h5\n')
     f.write(f'MODEL_CHECKPOINT_NAME: {MODEL_CHECKPOINT_NAME}.h5\n')
-
 
 # get training, testing, and eval TFRecordDataset
 # training is batched, shuffled, transformed, and repeated
@@ -118,6 +139,22 @@ early_stopping = callbacks.EarlyStopping(
 )
 tensorboard = callbacks.TensorBoard(log_dir=str(MODEL_SAVE_DIR / 'logs'), write_images=True)
 
+
+def lr_scheduler(epoch):
+    if epoch < RAMPUP_EPOCHS:
+        return MAX_LR
+    elif epoch < RAMPUP_EPOCHS + SUSTAIN_EPOCHS:
+        return MID_LR
+    else:
+        return MIN_LR
+
+
+lr_callback = callbacks.LearningRateScheduler(lambda epoch: lr_scheduler(epoch), verbose=True)
+
+model_callbacks = [model_checkpoint, tensorboard, early_stopping]
+if USE_ADJUSTED_LR:
+    model_callbacks.append(lr_callback)
+
 # fit the model
 history = my_model.fit(
     x=training,
@@ -125,7 +162,7 @@ history = my_model.fit(
     steps_per_epoch=(TRAIN_SIZE // BATCH_SIZE),
     validation_data=testing,
     validation_steps=TEST_SIZE,
-    callbacks=[model_checkpoint, tensorboard, early_stopping],
+    callbacks=model_callbacks,
 )
 
 # check how the model trained

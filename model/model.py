@@ -15,26 +15,6 @@ conv_layer = partial(layers.Conv2D,
                      )
 
 
-def decoder_block(input_tensor, concat_tensor=None, n_filters=512, n_convs=2, i=0, rate=0.2,
-                  name_prefix='decoder_block', noise=1, activation='relu', combo='add', **kwargs):
-    deconv = input_tensor
-    for j in range(n_convs):
-        deconv = conv_layer(n_filters, (3, 3), name=f'{name_prefix}{i}_deconv{j + 1}')(deconv)
-        deconv = layers.BatchNormalization(name=f'{name_prefix}{i}_batchnorm{j + 1}')(deconv)
-        deconv = layers.Activation(activation, name=f'{name_prefix}{i}_activation{j + 1}')(deconv)
-        deconv = layers.GaussianNoise(stddev=noise, name=f'{name_prefix}{i}_noise{j + 1}')(deconv)
-
-        if j == 0 and concat_tensor is not None:
-            deconv = layers.Dropout(rate=rate, name=f'{name_prefix}{i}_dropout')(deconv)
-            if combo == 'add':
-                deconv = layers.add([deconv, concat_tensor], name=f'{name_prefix}{i}_residual')
-            elif combo == 'concat':
-                deconv = layers.concatenate([deconv, concat_tensor], name=f'{name_prefix}{i}_concat')
-
-    up = layers.UpSampling2D(interpolation='bilinear', name=f'{name_prefix}{i}_upsamp')(deconv)
-    return up
-
-
 def recall_m(y_true, y_pred):
     true_positives = K.sum(K.round(K.clip(y_true * y_pred, 0, 1)))
     possible_positives = K.sum(K.round(K.clip(y_true, 0, 1)))
@@ -75,6 +55,26 @@ def bce_dice_loss(y_true, y_pred):
 
 def bce_loss(y_true, y_pred):
     return keras.losses.binary_crossentropy(y_true, y_pred, label_smoothing=0.2)
+
+
+def decoder_block(input_tensor, concat_tensor=None, n_filters=512, n_convs=2, i=0, rate=0.2,
+                  name_prefix='decoder_block', noise=1, activation='relu', combo='add', **kwargs):
+    deconv = input_tensor
+    for j in range(n_convs):
+        deconv = conv_layer(n_filters, (3, 3), name=f'{name_prefix}{i}_deconv{j + 1}')(deconv)
+        deconv = layers.BatchNormalization(name=f'{name_prefix}{i}_batchnorm{j + 1}')(deconv)
+        deconv = layers.Activation(activation, name=f'{name_prefix}{i}_activation{j + 1}')(deconv)
+        deconv = layers.GaussianNoise(stddev=noise, name=f'{name_prefix}{i}_noise{j + 1}')(deconv)
+
+        if j == 0 and concat_tensor is not None:
+            deconv = layers.Dropout(rate=rate, name=f'{name_prefix}{i}_dropout')(deconv)
+            if combo == 'add':
+                deconv = layers.add([deconv, concat_tensor], name=f'{name_prefix}{i}_residual')
+            elif combo == 'concat':
+                deconv = layers.concatenate([deconv, concat_tensor], name=f'{name_prefix}{i}_concat')
+
+    up = layers.UpSampling2D(interpolation='bilinear', name=f'{name_prefix}{i}_upsamp')(deconv)
+    return up
 
 
 def get_model(in_shape, out_classes, dropout_rate=0.2, noise=1,
